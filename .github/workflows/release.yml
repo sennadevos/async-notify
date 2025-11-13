@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libncurses5-dev libncursesw5-dev build-essential
+        
+    - name: Build release binary
+      run: |
+        make clean
+        make CXXFLAGS="-std=c++11 -Wall -Wextra -O3 -DNDEBUG"
+        strip async
+        
+    - name: Create tarball
+      run: |
+        tar -czf async-notify-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.tar.gz async README.md LICENSE
+        
+    - name: Generate checksums
+      run: |
+        sha256sum async > async-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.sha256
+        sha256sum async-notify-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.tar.gz > async-notify-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.tar.gz.sha256
+        
+    - name: Create Release Notes
+      id: release_notes
+      run: |
+        cat > release_notes.md << 'EOF'
+        ## async-notify v${{ steps.get_version.outputs.VERSION }}
+        
+        ### Installation
+        
+        **Linux (x86_64):**
+        ```bash
+        # Download the binary
+        wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/async
+        
+        # Make it executable
+        chmod +x async
+        
+        # Move to PATH (optional)
+        sudo mv async /usr/local/bin/
+        ```
+        
+        **From tarball:**
+        ```bash
+        wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/async-notify-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.tar.gz
+        tar -xzf async-notify-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.tar.gz
+        sudo mv async /usr/local/bin/
+        ```
+        
+        ### Verification
+        
+        Verify the download with checksums:
+        ```bash
+        sha256sum -c async-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.sha256
+        ```
+        
+        ### What's Changed
+        
+        See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+        
+        ### Requirements
+        
+        - Linux/Unix system
+        - ncurses library (usually pre-installed)
+        - Terminal with ncurses support
+        
+        ### Quick Start
+        
+        ```bash
+        async sleep 10
+        async wget https://example.com/large-file.zip
+        async make -j4
+        ```
+        EOF
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          async
+          async-notify-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.tar.gz
+          async-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.sha256
+          async-notify-${{ steps.get_version.outputs.VERSION }}-linux-x86_64.tar.gz.sha256
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Update latest release tag
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git tag -f latest
+        git push -f origin latest
+
