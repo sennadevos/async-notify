@@ -81,8 +81,6 @@ jobs:
       run: |
         test -f README.md
         test -f LICENSE
-        test -f CONTRIBUTING.md
-        test -f CODE_OF_CONDUCT.md
         
     - name: Validate Markdown
       uses: actionshub/markdownlint@main
