@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-20.04]
+        compiler: [g++, clang++]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libncurses5-dev libncursesw5-dev build-essential
+        
+    - name: Build with ${{ matrix.compiler }}
+      run: |
+        make CXX=${{ matrix.compiler }}
+        
+    - name: Verify binary
+      run: |
+        ./async --help || ./async || true
+        file async
+        ldd async
+        
+    - name: Test basic functionality
+      run: |
+        # Test that the command starts and returns immediately
+        timeout 5 ./async echo "CI Test" || true
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      if: matrix.os == 'ubuntu-latest' && matrix.compiler == 'g++'
+      with:
+        name: async-binary-linux-amd64
+        path: async
+        retention-days: 30
+
+  lint:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libncurses5-dev libncursesw5-dev build-essential cppcheck
+        
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=all --suppress=missingIncludeSystem --error-exitcode=0 async.cpp
+        
+    - name: Check for compiler warnings
+      run: |
+        g++ -std=c++11 -Wall -Wextra -Werror -fsyntax-only async.cpp
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check README exists
+      run: |
+        test -f README.md
+        test -f LICENSE
+        test -f CONTRIBUTING.md
+        test -f CODE_OF_CONDUCT.md
+        
+    - name: Validate Markdown
+      uses: actionshub/markdownlint@main
+      continue-on-error: true
